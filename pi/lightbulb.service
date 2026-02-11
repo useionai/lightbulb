@@ -1,0 +1,13 @@
+[Unit]
+Description=Lightbulb LED Controller
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/bengrande/lightbulb
+ExecStart=/home/bengrande/lightbulb/venv/bin/python -m lightbulb.main
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

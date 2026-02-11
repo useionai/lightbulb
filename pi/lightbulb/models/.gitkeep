@@ -1,0 +1,3 @@
+# This directory holds wake word models
+# Place your trained i_have_an_idea.tflite model here
+# See docs/WAKE_WORD_TRAINING.md for training instructions

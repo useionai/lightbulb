@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#1a1a2e">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <title>Lightbulb</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      min-height: 100vh;
+      padding: 1rem;
+      padding-top: max(1rem, env(safe-area-inset-top));
+      padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+    h1 { font-size: 1.5rem; }
+    .reload-btn {
+      background: #16213e;
+      border: 1px solid #334;
+      color: #eee;
+      padding: 0.5rem 0.75rem;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    .reload-btn:active { background: #1f3a5f; }
+    .status {
+      text-align: center;
+      margin-bottom: 1rem;
+      padding: 0.5rem;
+      background: #16213e;
+      border-radius: 8px;
+      font-size: 0.9rem;
+    }
+    .status .scene-name { color: #ffd700; font-weight: bold; }
+    .scenes {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+    button.scene-btn {
+      border: none;
+      border-radius: 12px;
+      padding: 1rem 0.5rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.1s, opacity 0.1s;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    }
+    button.scene-btn:active { transform: scale(0.95); }
+    button.scene-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.scene-btn.active { outline: 3px solid #fff; outline-offset: 2px; }
+    .brightness {
+      background: #16213e;
+      padding: 1rem;
+      border-radius: 12px;
+    }
+    .brightness label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-size: 0.9rem;
+    }
+    .brightness input[type="range"] {
+      width: 100%;
+      height: 2rem;
+      cursor: pointer;
+    }
+    .brightness-value {
+      text-align: center;
+      margin-top: 0.5rem;
+      font-size: 1.2rem;
+      font-weight: bold;
+    }
+    .toast {
+      position: fixed;
+      bottom: 2rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #333;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+    }
+    .toast.show { opacity: 1; }
+    .toast.error { background: #8b0000; }
+    .loading {
+      text-align: center;
+      padding: 2rem;
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Lightbulb</h1>
+    <button class="reload-btn" id="reload-btn">Reload Scenes</button>
+  </header>
+
+  <div class="status">
+    Current: <span id="current-scene" class="scene-name">--</span>
+  </div>
+
+  <div class="scenes" id="scenes">
+    <div class="loading">Loading scenes...</div>
+  </div>
+
+  <div class="brightness">
+    <label for="brightness">Brightness</label>
+    <input type="range" id="brightness" min="0" max="255" value="255">
+    <div class="brightness-value"><span id="brightness-value">255</span></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const API = '/api';
+    const STORAGE_KEY = 'lightbulb_state';
+
+    // Scene styling based on name patterns
+    const SCENE_STYLES = {
+      off: { bg: '#333', color: '#fff', label: 'Off' },
+      all_red: { bg: '#ff0000', color: '#fff', label: 'Red' },
+      all_green: { bg: '#00ff00', color: '#000', label: 'Green' },
+      all_blue: { bg: '#0000ff', color: '#fff', label: 'Blue' },
+      all_yellow: { bg: '#ffff00', color: '#000', label: 'Yellow' },
+      all_white: { bg: '#ffffff', color: '#000', label: 'White' },
+      warm_white: { bg: '#ffdfb8', color: '#000', label: 'Warm' },
+      cool_white: { bg: '#e0f0ff', color: '#000', label: 'Cool' },
+      rainbow: { bg: 'linear-gradient(90deg, red, orange, yellow, green, blue, violet)', color: '#fff', label: 'Rainbow' },
+      idea: { bg: '#ffd700', color: '#000', label: 'Idea' },
+      dreamy: { bg: 'linear-gradient(90deg, #4169e1, #9370db, #ff69b4, #da70d6)', color: '#fff', label: 'Dreamy' },
+    };
+
+    const DEFAULT_STYLE = { bg: '#445', color: '#fff' };
+
+    function showToast(msg, isError = false) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.className = 'toast show' + (isError ? ' error' : '');
+      setTimeout(() => el.className = 'toast', 2000);
+    }
+
+    function getSceneStyle(name) {
+      return SCENE_STYLES[name] || { ...DEFAULT_STYLE, label: name.replace(/_/g, ' ') };
+    }
+
+    // Cache helpers - stores scenes, currentScene, and brightness together
+    function getCache() {
+      try {
+        const data = localStorage.getItem(STORAGE_KEY);
+        return data ? JSON.parse(data) : null;
+      } catch { return null; }
+    }
+
+    function setCache(state) {
+      try {
+        const existing = getCache() || {};
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...existing, ...state }));
+      } catch {}
+    }
+
+    function updateCurrentScene(name) {
+      document.getElementById('current-scene').textContent = name || '--';
+      document.querySelectorAll('.scene-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.scene === name);
+      });
+      setCache({ currentScene: name });
+    }
+
+    function updateBrightnessUI(value) {
+      document.getElementById('brightness').value = value;
+      document.getElementById('brightness-value').textContent = value;
+    }
+
+    function renderScenes(scenes) {
+      const container = document.getElementById('scenes');
+      container.innerHTML = '';
+      scenes.forEach(name => {
+        const style = getSceneStyle(name);
+        const btn = document.createElement('button');
+        btn.className = 'scene-btn';
+        btn.textContent = style.label;
+        btn.dataset.scene = name;
+        btn.style.background = style.bg;
+        btn.style.color = style.color;
+        btn.onclick = () => activateScene(name);
+        container.appendChild(btn);
+      });
+    }
+
+    async function fetchStateFromAPI() {
+      const [scenesRes, brightnessRes] = await Promise.all([
+        fetch(`${API}/scenes`),
+        fetch(`${API}/brightness`)
+      ]);
+      if (!scenesRes.ok || !brightnessRes.ok) throw new Error('Failed to fetch state');
+      const scenesData = await scenesRes.json();
+      const brightnessData = await brightnessRes.json();
+      return {
+        scenes: scenesData.scenes,
+        currentScene: scenesData.current_scene,
+        brightness: brightnessData.brightness
+      };
+    }
+
+    async function loadState(forceRefresh = false) {
+      const cached = getCache();
+
+      // Use cache if available and not forcing refresh
+      if (!forceRefresh && cached && cached.scenes) {
+        renderScenes(cached.scenes);
+        updateCurrentScene(cached.currentScene);
+        updateBrightnessUI(cached.brightness ?? 255);
+        return;
+      }
+
+      // Fetch from API
+      try {
+        const state = await fetchStateFromAPI();
+        setCache(state);
+        renderScenes(state.scenes);
+        updateCurrentScene(state.currentScene);
+        updateBrightnessUI(state.brightness);
+        if (forceRefresh) showToast('State synced');
+      } catch (e) {
+        showToast('Failed to load state', true);
+        // Try cache as fallback
+        if (cached && cached.scenes) {
+          renderScenes(cached.scenes);
+          updateCurrentScene(cached.currentScene);
+          updateBrightnessUI(cached.brightness ?? 255);
+        }
+      }
+    }
+
+    async function activateScene(name) {
+      // Update UI immediately
+      updateCurrentScene(name);
+      try {
+        const res = await fetch(`${API}/scenes/${name}`, { method: 'POST' });
+        if (!res.ok) throw new Error('Failed to activate scene');
+      } catch (e) {
+        showToast(e.message, true);
+      }
+    }
+
+    async function setBrightness(value) {
+      // Update cache immediately
+      setCache({ brightness: parseInt(value) });
+      try {
+        const res = await fetch(`${API}/brightness`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ brightness: parseInt(value) })
+        });
+        if (!res.ok) throw new Error('Failed to set brightness');
+      } catch (e) {
+        showToast(e.message, true);
+      }
+    }
+
+    // Reload button
+    document.getElementById('reload-btn').onclick = () => loadState(true);
+
+    // Brightness slider
+    const slider = document.getElementById('brightness');
+    const valueDisplay = document.getElementById('brightness-value');
+    let debounceTimer;
+    slider.oninput = (e) => {
+      valueDisplay.textContent = e.target.value;
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => setBrightness(e.target.value), 150);
+    };
+
+    // Register service worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+
+    // Initial load - only fetches from API if no cache exists
+    loadState();
+  </script>
+</body>
+</html>

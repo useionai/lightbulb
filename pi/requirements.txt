@@ -1,0 +1,13 @@
+rpi-ws281x==5.0.0
+flask==3.0.0
+flask-cors==4.0.0
+pyaudio==0.2.14
+numpy>=1.24.0,<2.0.0
+pyyaml==6.0.1
+
+# Wake word detection dependencies
+# NOTE: openwakeword and onnxruntime are installed separately in setup.sh
+# because onnxruntime requires special handling on ARM (Raspberry Pi).
+scipy
+tqdm
+requests

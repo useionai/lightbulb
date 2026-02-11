@@ -1,0 +1,18 @@
+led:
+  count: 180        # Adjust to your LED strip
+  pin: 18           # GPIO pin (PWM)
+  brightness: 255
+
+audio:
+  sample_rate: 16000
+  chunk_size: 1280  # 80ms frames
+  device_index: 0   # SF-558 USB mic
+
+wake_word:
+  model_path: "lightbulb/models/i_have_an_idea.onnx"
+  threshold: 0.3
+  cooldown_seconds: 3.0
+
+api:
+  host: "0.0.0.0"
+  port: 5000
