@@ -1,1 +1,7 @@
-/training
+/training/cache
+/training/generated_clips
+/training/output
+/training/openWakeWord
+
+
+
